@@ -5,31 +5,27 @@
 #![no_main]
 
 use core::{arch::asm, panic::PanicInfo};
-use d1_pac::Peripherals;
 use embedded_hal::digital::blocking::OutputPin;
+use oreboot_soc::sunxi::d1::{
+    ccu::Clocks,
+    gpio::Gpio,
+    jtag::Jtag,
+    pac::Peripherals,
+    spi::{Spi, MODE_3},
+    time::U32Ext,
+    uart::{Config, Parity, Serial, StopBits, WordLength},
+};
 
 #[macro_use]
 mod logging;
-mod ccu;
 mod flash;
-mod gpio;
-mod jtag;
 mod mctl;
-mod spi;
-mod time;
-mod uart;
 
-use ccu::Clocks;
 #[cfg(feature = "nand")]
 use flash::SpiNand;
 #[cfg(feature = "nor")]
 use flash::SpiNor;
-use gpio::Gpio;
-use jtag::Jtag;
 use mctl::RAM_BASE;
-use spi::Spi;
-use time::U32Ext;
-use uart::{Config, Parity, Serial, StopBits, WordLength};
 
 // taken from oreboot
 pub type EntryPoint = unsafe extern "C" fn(r0: usize, r1: usize);
@@ -37,7 +33,7 @@ pub type EntryPoint = unsafe extern "C" fn(r0: usize, r1: usize);
 const STACK_SIZE: usize = 1 * 1024; // 1KiB
 
 #[link_section = ".bss.uninit"]
-static mut SBI_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
+static mut BT0_STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
 
 /// Jump over head data to executable code.
 ///
@@ -126,7 +122,7 @@ pub unsafe extern "C" fn start() -> ! {
         // it drops all peripherals it holds when goes out of scope
         // now, jump to dram code
         "j      {finish}",
-        stack      =   sym SBI_STACK,
+        stack      =   sym BT0_STACK,
         stack_size = const STACK_SIZE,
         head_data  =   sym HEAD_DATA,
         main       =   sym main,
@@ -183,7 +179,7 @@ extern "C" fn main() -> usize {
     let spi = Spi::new(
         p.SPI0,
         (sck, scs, mosi, miso),
-        spi::MODE_3,
+        MODE_3,
         100_000_000.hz(),
         &clocks,
     );

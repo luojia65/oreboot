@@ -1,10 +1,10 @@
 //! Uart peripheral on BT0 stage
-use crate::ccu::{Clocks, Gating, Reset};
-use crate::gpio::{
+use super::ccu::{Clocks, Gating, Reset};
+use super::gpio::{
     portb::{PB8, PB9},
     Function,
 };
-use crate::time::Bps;
+use super::time::Bps;
 use core::ops::Deref;
 use d1_pac::{
     uart::{

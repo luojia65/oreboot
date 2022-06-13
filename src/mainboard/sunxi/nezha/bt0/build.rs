@@ -49,7 +49,7 @@ SECTIONS {
 
 fn main() {
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out.join("link-bt0.ld"))
+    File::create(out.join("link-nezha-bt0.ld"))
         .unwrap()
         .write_all(NEZHA_FLASH)
         .unwrap();

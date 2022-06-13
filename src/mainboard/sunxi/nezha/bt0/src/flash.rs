@@ -1,4 +1,4 @@
-﻿use crate::spi::{Instance, Spi};
+﻿use oreboot_soc::sunxi::d1::spi::{Instance, Spi};
 
 mod consts {
     #![allow(unused)]

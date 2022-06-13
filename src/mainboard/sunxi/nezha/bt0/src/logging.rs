@@ -1,21 +1,24 @@
 //! Log system for BT0
 
-use crate::{
+use embedded_hal::serial::nb::Write;
+use nb::block;
+use oreboot_soc::sunxi::d1::{
     gpio::{
         portb::{PB8, PB9},
         Function,
     },
+    pac::UART0,
     uart::{self, Serial},
 };
-use d1_pac::UART0;
-use embedded_hal::serial::nb::Write;
-use nb::block;
 use spin::{Mutex, Once};
 
 #[doc(hidden)]
 pub(crate) static LOGGER: Once<LockedLogger> = Once::new();
 
-type S = Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>;
+type S = Wrap<Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>>;
+
+// type `Serial` is declared out of this crate, avoid orphan rule
+pub(crate) struct Wrap<T>(T);
 
 #[doc(hidden)]
 pub(crate) struct LockedLogger {
@@ -27,17 +30,17 @@ impl ufmt::uWrite for S {
     #[inline]
     fn write_str(&mut self, s: &str) -> Result<(), uart::Error> {
         for byte in s.as_bytes() {
-            block!(self.write(*byte))?
+            block!(self.0.write(*byte))?
         }
-        block!(self.flush())?;
+        block!(self.0.flush())?;
         Ok(())
     }
 }
 
 #[inline]
-pub fn set_logger(serial: S) {
+pub fn set_logger(serial: Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>) {
     LOGGER.call_once(|| LockedLogger {
-        inner: Mutex::new(serial),
+        inner: Mutex::new(Wrap(serial)),
     });
 }
 

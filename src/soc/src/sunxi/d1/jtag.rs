@@ -1,6 +1,6 @@
 //! JTAG sink interface
 
-use crate::gpio::{
+use super::gpio::{
     portf::{PF0, PF1, PF3, PF5},
     Function,
 };

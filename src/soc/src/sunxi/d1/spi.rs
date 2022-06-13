@@ -1,6 +1,6 @@
 //! Serial Peripheral Interface (SPI)
 
-use crate::{
+use super::{
     ccu::{Clocks, Gating, Reset},
     gpio::{
         portc::{PC2, PC3, PC4, PC5},

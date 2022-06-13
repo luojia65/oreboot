@@ -54,7 +54,7 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
             let gdb_server = if let Ok(ans) = gdb_detect::load_gdb_server_from_file() {
                 ans
             } else {
-                let ans = gdb_detect::detect_gdb_server(&gdb_path, &args.env);
+                let ans = gdb_detect::detect_gdb_server(&gdb_path);
                 gdb_detect::save_gdb_server_to_file(&ans);
                 trace!("saved GDB server");
                 ans

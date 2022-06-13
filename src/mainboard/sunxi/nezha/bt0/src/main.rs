@@ -242,7 +242,6 @@ extern "C" fn finish(address: extern "C" fn()) -> ! {
 }
 
 #[cfg_attr(not(test), panic_handler)]
-#[cfg_attr(test, allow(unused))]
 fn panic(info: &PanicInfo) -> ! {
     if let Some(location) = info.location() {
         println!(

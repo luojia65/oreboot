@@ -17,6 +17,13 @@ use core::panic::PanicInfo;
 // use oreboot_soc::sunxi::d1::{ccu::CCU, gpio::GPIO};
 // use payloads::payload;
 // use sbi::sbi_init;
+use embedded_hal::digital::blocking::OutputPin;
+use oreboot_soc::sunxi::d1::{
+    // ccu::Clocks,
+    gpio::Gpio,
+    pac::Peripherals,
+    // time::U32Ext,
+};
 
 // when handled from BT0 stage, DDR is prepared.
 // this code runs from DDR start
@@ -67,6 +74,16 @@ const STACK_SIZE: usize = 1 * 1024; // 1KiB
 // misaligned and so on.
 #[no_mangle]
 extern "C" fn main() -> usize {
+    let p = Peripherals::take().unwrap();
+    // let clocks = Clocks {
+    //     psi: 600_000_000.hz(),
+    //     apb1: 24_000_000.hz(),
+    // };
+    let gpio = Gpio::new(p.GPIO);
+    // turn off led
+    let mut pb5 = gpio.portb.pb5.into_output();
+    pb5.set_low().unwrap();
+
     // // clock
     // let mut ccu = CCU::new();
     // ccu.init().unwrap();
@@ -119,7 +136,7 @@ extern "C" fn main() -> usize {
     1 // 1 => shutdown
 }
 
-extern "C" fn finish(power_op: usize) -> ! {
+extern "C" fn finish(_power_op: usize) -> ! {
     loop {
         unsafe { asm!("wfi") }
     }
@@ -127,6 +144,6 @@ extern "C" fn finish(power_op: usize) -> ! {
 
 /// This function is called on panic.
 #[cfg_attr(not(test), panic_handler)]
-fn panic(info: &PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     loop {} // todo
 }

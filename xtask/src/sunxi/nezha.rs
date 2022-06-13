@@ -6,7 +6,7 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use log::{error, info, trace};
 use std::env;
 use std::fs::File;
-use std::io::{ErrorKind, Seek, SeekFrom};
+use std::io::{self, ErrorKind, Seek, SeekFrom};
 use std::process::{self, Command, Stdio};
 
 pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
@@ -14,29 +14,35 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
         Commands::Make => {
             info!("make D1 flash binary");
             let binutils_prefix = find_binutils_prefix_or_fail();
-            xtask_build_d1_flash_bt0(&args.env, features);
+            xtask_build_d1_flash_bt0(&args.env, &features);
             xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_finialize_d1_flash_bt0(&args.env);
+            xtask_build_d1_flash_main(&args.env);
+            xtask_binary_d1_flash_main(binutils_prefix, &args.env);
+            xtask_concat_flash_binaries(&args.env);
         }
         Commands::Flash => {
             info!("build D1 binary and burn");
             let xfel = find_xfel();
             xfel_find_connected_device(xfel);
             let binutils_prefix = find_binutils_prefix_or_fail();
-            xtask_build_d1_flash_bt0(&args.env, features);
+            xtask_build_d1_flash_bt0(&args.env, &features);
             xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_finialize_d1_flash_bt0(&args.env);
+            xtask_build_d1_flash_main(&args.env);
+            xtask_binary_d1_flash_main(binutils_prefix, &args.env);
+            xtask_concat_flash_binaries(&args.env);
             xtask_burn_d1_flash_bt0(xfel, &args.env);
         }
         Commands::Asm => {
             info!("build D1 flash ELF and view assembly");
             let binutils_prefix = find_binutils_prefix_or_fail();
-            xtask_build_d1_flash_bt0(&args.env, features);
+            xtask_build_d1_flash_bt0(&args.env, &features);
             xtask_dump_d1_flash_bt0(binutils_prefix, &args.env);
         }
         Commands::Gdb => {
             info!("debug using gdb");
-            xtask_build_d1_flash_bt0(&args.env, features);
+            xtask_build_d1_flash_bt0(&args.env, &features);
             let gdb_path = if let Ok(ans) = gdb_detect::load_gdb_path_from_file() {
                 ans
             } else {
@@ -60,7 +66,7 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
 
 const DEFAULT_TARGET: &'static str = "riscv64imac-unknown-none-elf";
 
-fn xtask_build_d1_flash_bt0(env: &Env, features: Vec<String>) {
+fn xtask_build_d1_flash_bt0(env: &Env, features: &Vec<String>) {
     trace!("build D1 flash bt0");
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     trace!("found cargo at {}", cargo);
@@ -86,6 +92,24 @@ fn xtask_build_d1_flash_bt0(env: &Env, features: Vec<String>) {
     }
 }
 
+fn xtask_build_d1_flash_main(env: &Env) {
+    trace!("build D1 flash main");
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    trace!("found cargo at {}", cargo);
+    let mut command = Command::new(cargo);
+    command.current_dir(board_project_root().join("main"));
+    command.arg("build");
+    if env.release {
+        command.arg("--release");
+    }
+    let status = command.status().unwrap();
+    trace!("cargo returned {}", status);
+    if !status.success() {
+        error!("cargo build failed with {}", status);
+        process::exit(1);
+    }
+}
+
 fn xtask_binary_d1_flash_bt0(prefix: &str, env: &Env) {
     trace!("objcopy binary, prefix: '{}'", prefix);
     let status = Command::new(format!("{}objcopy", prefix))
@@ -94,6 +118,24 @@ fn xtask_binary_d1_flash_bt0(prefix: &str, env: &Env) {
         .arg("--binary-architecture=riscv64")
         .arg("--strip-all")
         .args(&["-O", "binary", "oreboot-nezha-bt0.bin"])
+        .status()
+        .unwrap();
+
+    trace!("objcopy returned {}", status);
+    if !status.success() {
+        error!("objcopy failed with {}", status);
+        process::exit(1);
+    }
+}
+
+fn xtask_binary_d1_flash_main(prefix: &str, env: &Env) {
+    trace!("objcopy binary, prefix: '{}'", prefix);
+    let status = Command::new(format!("{}objcopy", prefix))
+        .current_dir(dist_dir(env, DEFAULT_TARGET))
+        .arg("oreboot-nezha-main")
+        .arg("--binary-architecture=riscv64")
+        .arg("--strip-all")
+        .args(&["-O", "binary", "oreboot-nezha-main.bin"])
         .status()
         .unwrap();
 
@@ -155,6 +197,31 @@ fn align_up_to(len: u64, target_align: u64) -> u64 {
     }
 }
 
+fn xtask_concat_flash_binaries(env: &Env) {
+    let dist_dir = dist_dir(env, DEFAULT_TARGET);
+    let mut bt0_file = File::options()
+        .read(true)
+        .open(dist_dir.join("oreboot-nezha-bt0.bin"))
+        .expect("open bt0 binary file");
+    let mut main_file = File::options()
+        .read(true)
+        .open(dist_dir.join("oreboot-nezha-main.bin"))
+        .expect("open main binary file");
+    let mut output_file = File::options()
+        .write(true)
+        .create(true)
+        .open(dist_dir.join("oreboot-nezha.bin"))
+        .expect("create output binary file");
+    let bt0_len = bt0_file.metadata().unwrap().len();
+    let new_len = bt0_len + main_file.metadata().unwrap().len();
+    output_file.set_len(new_len).unwrap();
+    io::copy(&mut bt0_file, &mut output_file).expect("copy bt0 binary");
+    output_file
+        .seek(SeekFrom::Start(bt0_len))
+        .expect("seek after bt0 copy");
+    io::copy(&mut main_file, &mut output_file).expect("copy main binary");
+}
+
 fn xtask_burn_d1_flash_bt0(xfel: &str, env: &Env) {
     trace!("burn flash with xfel {}", xfel);
     let mut command = Command::new(xfel);
@@ -168,7 +235,7 @@ fn xtask_burn_d1_flash_bt0(xfel: &str, env: &Env) {
         }
     };
     command.args(["write", "0"]);
-    command.arg("oreboot-nezha-bt0.bin");
+    command.arg("oreboot-nezha.bin");
     let status = command.status().unwrap();
     trace!("xfel returned {}", status);
     if !status.success() {

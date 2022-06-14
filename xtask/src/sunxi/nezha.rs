@@ -15,10 +15,10 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
             info!("make D1 flash binary");
             let binutils_prefix = find_binutils_prefix_or_fail();
             xtask_build_d1_flash_bt0(&args.env, &features);
-            xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
-            xtask_finialize_d1_flash_bt0(&args.env);
             xtask_build_d1_flash_main(&args.env);
+            xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_binary_d1_flash_main(binutils_prefix, &args.env);
+            xtask_finialize_d1_flash_bt0(&args.env);
             xtask_concat_flash_binaries(&args.env);
         }
         Commands::Flash => {
@@ -27,10 +27,10 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
             xfel_find_connected_device(xfel);
             let binutils_prefix = find_binutils_prefix_or_fail();
             xtask_build_d1_flash_bt0(&args.env, &features);
-            xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
-            xtask_finialize_d1_flash_bt0(&args.env);
             xtask_build_d1_flash_main(&args.env);
+            xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_binary_d1_flash_main(binutils_prefix, &args.env);
+            xtask_finialize_d1_flash_bt0(&args.env);
             xtask_concat_flash_binaries(&args.env);
             xtask_burn_d1_flash_bt0(xfel, &args.env);
         }
@@ -146,46 +146,61 @@ fn xtask_binary_d1_flash_main(prefix: &str, env: &Env) {
     }
 }
 
-const EGON_HEADER_LENGTH: u64 = 0x60;
+const EGON_HEAD_LENGTH: u64 = 0x60;
+const MAIN_STAGE_HEAD_LENGTH: u64 = 0x08;
+const TOTAL_HEAD_LENGTH: u64 = EGON_HEAD_LENGTH + MAIN_STAGE_HEAD_LENGTH;
 
 // This function does:
-// 1. fill in binary length
-// 2. calculate checksum of bt0 image; old checksum value must be filled as stamp value
+// 1. fill in binary length of bt0
+// 2. fill in flash length of main stage
+// 3. calculate checksum of bt0 image; old checksum value must be filled as stamp value
 fn xtask_finialize_d1_flash_bt0(env: &Env) {
     let path = dist_dir(env, DEFAULT_TARGET);
-    let mut file = File::options()
+    let mut bt0_file = File::options()
         .read(true)
         .write(true)
         .open(path.join("oreboot-nezha-bt0.bin"))
         .expect("open output binary file");
-    let total_length = file.metadata().unwrap().len();
-    if total_length < EGON_HEADER_LENGTH {
+    let total_length = bt0_file.metadata().unwrap().len();
+    if total_length < TOTAL_HEAD_LENGTH {
         error!(
-            "objcopy binary size less than eGON header length, expected >= {} but is {}",
-            EGON_HEADER_LENGTH, total_length
+            "objcopy binary size less than minimal header length, expected >= {} but is {}",
+            TOTAL_HEAD_LENGTH, total_length
         );
     }
+    let main_stage_file = File::options()
+        .read(true)
+        .write(true)
+        .open(path.join("oreboot-nezha-main.bin"))
+        .expect("open output binary file");
+    let main_stage_length = main_stage_file.metadata().unwrap().len();
+    bt0_file.seek(SeekFrom::Start(0x64)).unwrap();
+    bt0_file
+        .write_u32::<LittleEndian>(main_stage_length as u32)
+        .unwrap();
     let new_len = align_up_to(total_length, 16 * 1024); // align up to 16KB
-    file.set_len(new_len).unwrap();
-    file.seek(SeekFrom::Start(0x10)).unwrap();
-    file.write_u32::<LittleEndian>(new_len as u32).unwrap();
-    file.seek(SeekFrom::Start(0x0C)).unwrap();
-    let stamp = file.read_u32::<LittleEndian>().unwrap();
+    bt0_file.seek(SeekFrom::Start(0x60)).unwrap();
+    bt0_file.write_u32::<LittleEndian>(new_len as u32).unwrap();
+    bt0_file.set_len(new_len).unwrap();
+    bt0_file.seek(SeekFrom::Start(0x10)).unwrap();
+    bt0_file.write_u32::<LittleEndian>(new_len as u32).unwrap();
+    bt0_file.seek(SeekFrom::Start(0x0C)).unwrap();
+    let stamp = bt0_file.read_u32::<LittleEndian>().unwrap();
     if stamp != 0x5F0A6C39 {
         error!("wrong stamp value; check your generated blob and try again")
     }
     let mut checksum: u32 = 0;
-    file.seek(SeekFrom::Start(0)).unwrap();
+    bt0_file.seek(SeekFrom::Start(0)).unwrap();
     loop {
-        match file.read_u32::<LittleEndian>() {
+        match bt0_file.read_u32::<LittleEndian>() {
             Ok(val) => checksum = checksum.wrapping_add(val),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
             Err(e) => error!("io error while calculating checksum: {:?}", e),
         }
     }
-    file.seek(SeekFrom::Start(0x0C)).unwrap();
-    file.write_u32::<LittleEndian>(checksum).unwrap();
-    file.sync_all().unwrap(); // save file before automatic closing
+    bt0_file.seek(SeekFrom::Start(0x0C)).unwrap();
+    bt0_file.write_u32::<LittleEndian>(checksum).unwrap();
+    bt0_file.sync_all().unwrap(); // save file before automatic closing
 } // for C developers: files are automatically closed when they're out of scope
 
 fn align_up_to(len: u64, target_align: u64) -> u64 {

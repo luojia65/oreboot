@@ -47,7 +47,7 @@ pub unsafe extern "C" fn head_jump() {
     asm!(
         ".option push",
         ".option rvc",
-        "c.j    0x60",
+        "c.j    0x68", // 0x60: eGON.BT0 header; 0x08: FlashHead
         ".option pop",
         // sym start,
         options(noreturn)
@@ -56,8 +56,11 @@ pub unsafe extern "C" fn head_jump() {
 
 // todo: option(noreturn) generates an extra `unimp` insn
 
+// eGON.BT0 header. This header is identified by D1 ROM code
+// to copy BT0 stage bootloader into SRAM memory.
+// This header takes 0x60 bytes.
 #[repr(C)]
-pub struct HeadData {
+pub struct EgonHead {
     magic: [u8; 8],
     checksum: u32,
     length: u32,
@@ -72,9 +75,9 @@ pub struct HeadData {
 
 const STAMP_CHECKSUM: u32 = 0x5F0A6C39;
 
-// clobber used by KEEP(*(.head.data)) in link script
-#[link_section = ".head.data"]
-pub static HEAD_DATA: HeadData = HeadData {
+// clobber used by KEEP(*(.head.egon)) in link script
+#[link_section = ".head.egon"]
+pub static EGON_HEAD: EgonHead = EgonHead {
     magic: *b"eGON.BT0",
     checksum: STAMP_CHECKSUM, // real checksum filled by blob generator
     length: 0,                // real size filled by blob generator
@@ -85,6 +88,23 @@ pub static HEAD_DATA: HeadData = HeadData {
     dram_size: 0,
     boot_media: 0,
     string_pool: [0; 13],
+};
+
+// Private use; not designed as conventional header structure.
+// Real data filled by xtask.
+// This header takes 0x8 bytes. When modifying this structure, make sure
+// the offset in `head_jump` function is also modified.
+#[repr(C)]
+struct MainStageHead {
+    offset: u32,
+    length: u32,
+}
+
+// clobber used by KEEP(*(.head.main)) in link script
+#[link_section = ".head.main"]
+static MAIN_STAGE_HEAD: MainStageHead = MainStageHead {
+    offset: 0, // real offset filled by xtask
+    length: 0, // real size filled by xtask
 };
 
 /// Jump over head data to executable code.
@@ -116,7 +136,7 @@ pub unsafe extern "C" fn start() -> ! {
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
-        "la     a0, {head_data}",
+        "la     a0, {egon_head}",
         "j      {main}",
         // function `main` returns address of next stage,
         // it drops all peripherals it holds when goes out of scope
@@ -124,7 +144,7 @@ pub unsafe extern "C" fn start() -> ! {
         "j      {finish}",
         stack      =   sym BT0_STACK,
         stack_size = const STACK_SIZE,
-        head_data  =   sym HEAD_DATA,
+        egon_head  =   sym EGON_HEAD,
         main       =   sym main,
         finish     =   sym finish,
         options(noreturn)
@@ -220,6 +240,12 @@ extern "C" fn main() -> usize {
         println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
         let mut page = [0u8; 256];
         flash.copy_into(0, &mut page);
+        println!("page = {:?}", page[..]).ok();
+        println!(
+            "flash offset: {}, length: {}",
+            MAIN_STAGE_HEAD.offset, MAIN_STAGE_HEAD.length
+        )
+        .ok();
         let _ = flash.free().free();
     }
 
@@ -234,8 +260,8 @@ extern "C" fn main() -> usize {
 }
 
 // jump to dram
-extern "C" fn finish(address: extern "C" fn()) -> ! {
-    unsafe { asm!("jr {}", in(reg) address) }
+extern "C" fn finish(main_stage: extern "C" fn()) -> ! {
+    main_stage();
     loop {
         unsafe { asm!("wfi") }
     }

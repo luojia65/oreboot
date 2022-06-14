@@ -10,11 +10,10 @@ MEMORY {
     SRAM : ORIGIN = 0x00020000, LENGTH = 32K
 }
 SECTIONS {
-    .head.text : {
+    .head : {
         *(.head.text)
-    } > SRAM
-    .head.data : {
-        KEEP(*(.head.data))
+        KEEP(*(.head.egon))
+        KEEP(*(.head.main))
     } > SRAM
     .text : {
         KEEP(*(.text.entry))

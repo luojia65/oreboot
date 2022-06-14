@@ -19,11 +19,14 @@ use core::panic::PanicInfo;
 // use sbi::sbi_init;
 use embedded_hal::digital::blocking::OutputPin;
 use oreboot_soc::sunxi::d1::{
-    // ccu::Clocks,
+    ccu::Clocks,
     gpio::Gpio,
     pac::Peripherals,
-    // time::U32Ext,
+    uart::{Config, Parity, Serial, StopBits, WordLength},
+    time::U32Ext,
 };
+#[macro_use]
+mod logging;
 
 // when handled from BT0 stage, DDR is prepared.
 // this code runs from DDR start
@@ -43,7 +46,7 @@ unsafe extern "C" fn start() -> ! {
         "sd     x0, 0(t0)",
         "addi   t0, t0, 4",
         "j      1b",
-        "1:",
+        "1:", 
         // 3. prepare stack
         "la     sp, {stack}",
         "li     t0, {stack_size}",
@@ -75,15 +78,28 @@ const STACK_SIZE: usize = 1 * 1024; // 1KiB
 #[no_mangle]
 extern "C" fn main() -> usize {
     let p = Peripherals::take().unwrap();
-    // let clocks = Clocks {
-    //     psi: 600_000_000.hz(),
-    //     apb1: 24_000_000.hz(),
-    // };
+    let clocks = Clocks {
+        psi: 600_000_000.hz(),
+        apb1: 24_000_000.hz(),
+    };
     let gpio = Gpio::new(p.GPIO);
     // turn off led
     let mut pb5 = gpio.portb.pb5.into_output();
     pb5.set_low().unwrap();
 
+    // prepare serial port logger
+    let tx = gpio.portb.pb8.into_function_6();
+    let rx = gpio.portb.pb9.into_function_6();
+    let config = Config {
+        baudrate: 115200.bps(),
+        wordlength: WordLength::Eight,
+        parity: Parity::None,
+        stopbits: StopBits::One,
+    };
+    let serial = Serial::new(p.UART0, (tx, rx), config, &clocks);
+    crate::logging::set_logger(serial);
+
+    println!("!oreboot from DDR 🦀").ok();
     // // clock
     // let mut ccu = CCU::new();
     // ccu.init().unwrap();

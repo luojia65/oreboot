@@ -252,8 +252,7 @@ extern "C" fn main() -> usize {
             core::slice::from_raw_parts_mut(RAM_BASE as *mut u8, main_stage_head.length as usize)
         };
         flash.copy_into(main_stage_head.offset, ddr_buffer);
-        println!("buffer: {:?}", ddr_buffer).ok();
-        let _ = flash.free().free();
+        // flash is freed when it goes out of scope
     }
 
     unsafe {

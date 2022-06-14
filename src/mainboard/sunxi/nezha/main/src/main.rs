@@ -48,7 +48,7 @@ unsafe extern "C" fn start() -> ! {
         "la     sp, {stack}",
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
-        "j      {main}",
+        "call   {main}",
         // Function `main` returns with hardware power operation type
         // which may be reboot or shutdown. Function `finish` would
         // perform these operations.

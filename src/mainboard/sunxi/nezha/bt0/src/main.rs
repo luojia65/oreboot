@@ -139,7 +139,7 @@ pub unsafe extern "C" fn start() -> ! {
         "li     t0, {stack_size}",
         "add    sp, sp, t0",
         "la     a0, {egon_head}",
-        "j      {main}",
+        "call   {main}",
         // function `main` returns address of next stage,
         // it drops all peripherals it holds when goes out of scope
         // now, jump to dram code

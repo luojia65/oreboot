@@ -18,7 +18,7 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
             xtask_build_d1_flash_main(&args.env);
             xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_binary_d1_flash_main(binutils_prefix, &args.env);
-            xtask_finialize_d1_flash_bt0(&args.env);
+            xtask_finialize_d1_flash(&args.env);
             xtask_concat_flash_binaries(&args.env);
         }
         Commands::Flash => {
@@ -30,7 +30,7 @@ pub(crate) fn execute_command(args: &crate::Cli, features: Vec<String>) {
             xtask_build_d1_flash_main(&args.env);
             xtask_binary_d1_flash_bt0(binutils_prefix, &args.env);
             xtask_binary_d1_flash_main(binutils_prefix, &args.env);
-            xtask_finialize_d1_flash_bt0(&args.env);
+            xtask_finialize_d1_flash(&args.env);
             xtask_concat_flash_binaries(&args.env);
             xtask_burn_d1_flash_bt0(xfel, &args.env);
         }
@@ -154,7 +154,7 @@ const TOTAL_HEAD_LENGTH: u64 = EGON_HEAD_LENGTH + MAIN_STAGE_HEAD_LENGTH;
 // 1. fill in binary length of bt0
 // 2. fill in flash length of main stage
 // 3. calculate checksum of bt0 image; old checksum value must be filled as stamp value
-fn xtask_finialize_d1_flash_bt0(env: &Env) {
+fn xtask_finialize_d1_flash(env: &Env) {
     let path = dist_dir(env, DEFAULT_TARGET);
     let mut bt0_file = File::options()
         .read(true)

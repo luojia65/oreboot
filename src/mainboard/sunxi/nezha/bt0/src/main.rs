@@ -95,14 +95,16 @@ pub static EGON_HEAD: EgonHead = EgonHead {
 // This header takes 0x8 bytes. When modifying this structure, make sure
 // the offset in `head_jump` function is also modified.
 #[repr(C)]
-struct MainStageHead {
+pub struct MainStageHead {
     offset: u32,
     length: u32,
 }
 
 // clobber used by KEEP(*(.head.main)) in link script
+// To avoid optimization, always read from flash page. Do NOT use this
+// variable directly.
 #[link_section = ".head.main"]
-static MAIN_STAGE_HEAD: MainStageHead = MainStageHead {
+pub static MAIN_STAGE_HEAD: MainStageHead = MainStageHead {
     offset: 0, // real offset filled by xtask
     length: 0, // real size filled by xtask
 };
@@ -238,20 +240,26 @@ extern "C" fn main() -> usize {
     {
         let mut flash = SpiNand::new(spi);
         println!("Oreboot read flash ID = {:?}", flash.read_id()).ok();
-        let mut page = [0u8; 256];
-        flash.copy_into(0, &mut page);
-        println!("page = {:?}", page[..]).ok();
+        let mut main_stage_head = [0u8; 8];
+        flash.copy_into(0x60, &mut main_stage_head);
+        let main_stage_head: MainStageHead = unsafe { core::mem::transmute(main_stage_head) };
         println!(
             "flash offset: {}, length: {}",
-            MAIN_STAGE_HEAD.offset, MAIN_STAGE_HEAD.length
+            main_stage_head.offset, main_stage_head.length
         )
         .ok();
+        let ddr_buffer = unsafe {
+            core::slice::from_raw_parts_mut(RAM_BASE as *mut u8, main_stage_head.length as usize)
+        };
+        flash.copy_into(main_stage_head.offset, ddr_buffer);
+        println!("buffer: {:?}", ddr_buffer).ok();
         let _ = flash.free().free();
     }
 
-    for _ in 0..1000_0000 {
-        core::hint::spin_loop();
+    unsafe {
+        asm!("fence.i");
     }
+
     println!("Run payload at {}", RAM_BASE).ok();
 
     // returns an address of dram payload; now cpu would jump to this address

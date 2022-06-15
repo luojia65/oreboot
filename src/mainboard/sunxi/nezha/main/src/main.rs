@@ -117,6 +117,24 @@ extern "C" fn main() -> usize {
 
     logging::set_logger(serial);
 
+    init_pmp();
+    // rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(serial);
+    println!("oreboot: serial uart0 initialized");
+    runtime::init();
+    peripheral::init_peripheral();
+    println!("RustSBI version {}", rustsbi::VERSION);
+    println!("{}", rustsbi::LOGO);
+    println!("Platform Name: {}", PLATFORM);
+    println!(
+        "Implementation: Oreboot version {}",
+        env!("CARGO_PKG_VERSION")
+    );
+    unsafe {
+        delegate_interrupt_exception();
+    }
+    hart_csr_utils::print_hart_csrs();
+    hart_csr_utils::print_hart_pmp();
+    
     // let w = &mut print::WriteTo::new(console);
     // writeln!(w, "## Loading payload\r").unwrap();
 
@@ -152,24 +170,7 @@ extern "C" fn main() -> usize {
     // ];
     // TODO: Get this from configuration
 
-    init_pmp();
-    // rustsbi::legacy_stdio::init_legacy_stdio_embedded_hal(serial);
-    println!("oreboot: serial uart0 initialized");
-    runtime::init();
-    peripheral::init_peripheral();
-    println!("RustSBI version {}\r", rustsbi::VERSION);
-    println!("{}", rustsbi::LOGO);
-    println!("Platform Name: {}\r", PLATFORM);
-    println!(
-        "Implementation: Oreboot version {}\r",
-        env!("CARGO_PKG_VERSION")
-    );
-    unsafe {
-        delegate_interrupt_exception();
-    }
-    hart_csr_utils::print_hart_csrs();
-    hart_csr_utils::print_hart_pmp();
-    println!("enter supervisor {}\r", mem);
+    println!("enter supervisor {}", mem);
     let (reset_type, reset_reason) =
         execute::execute_supervisor(mem, 0, 0 /* todo dtb offset */);
     println!("oreboot: reset reason = {}", reset_reason);

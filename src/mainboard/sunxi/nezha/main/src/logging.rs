@@ -49,9 +49,7 @@ macro_rules! print {
     ($($arg:tt)*) => ({
         use core::fmt::Write;
         let mut logger = $crate::logging::LOGGER.wait().inner.lock();
-        let ans = core::write!(logger, $($arg)*);
-        drop(logger);
-        ans
+        core::write!(logger, $($arg)*).ok();
     });
 }
 
@@ -61,9 +59,7 @@ macro_rules! println {
     ($fmt: literal $(, $($arg: tt)+)?) => ({
         use core::fmt::Write;
         let mut logger = $crate::logging::LOGGER.wait().inner.lock();
-        let ans = core::write!(logger, $fmt $(, $($arg)+)?);
-        drop(logger);
-        let _ = $crate::print!("\r\n");
-        ans
+        core::write!(logger, $fmt $(, $($arg)+)?).ok();
+        $crate::print!("\r\n");
     });
 }

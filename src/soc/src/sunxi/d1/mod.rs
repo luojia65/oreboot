@@ -1,4 +1,5 @@
 pub mod ccu;
+pub mod clint;
 pub mod gpio;
 pub mod spi;
 pub mod time;

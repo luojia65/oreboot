@@ -1,5 +1,6 @@
 // TODO: rearrange and move to src/console
 
+use core::fmt;
 use embedded_hal::serial::nb::Write;
 use nb::block;
 use oreboot_soc::sunxi::d1::{
@@ -8,7 +9,7 @@ use oreboot_soc::sunxi::d1::{
         Function,
     },
     pac::UART0,
-    uart::{self, Serial},
+    uart::Serial,
 };
 use spin::{Mutex, Once};
 
@@ -25,14 +26,13 @@ pub(crate) struct LockedLogger {
     pub(crate) inner: Mutex<S>,
 }
 
-impl ufmt::uWrite for S {
-    type Error = uart::Error;
+impl fmt::Write for S {
     #[inline]
-    fn write_str(&mut self, s: &str) -> Result<(), uart::Error> {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.as_bytes() {
-            block!(self.0.write(*byte))?
+            block!(self.0.write(*byte)).ok();
         }
-        block!(self.0.flush())?;
+        block!(self.0.flush()).ok();
         Ok(())
     }
 }
@@ -47,8 +47,9 @@ pub fn set_logger(serial: Serial<UART0, (PB8<Function<6>>, PB9<Function<6>>)>) {
 #[macro_export(local_inner_macros)]
 macro_rules! print {
     ($($arg:tt)*) => ({
+        use core::fmt::Write;
         let mut logger = $crate::logging::LOGGER.wait().inner.lock();
-        let ans = ufmt::uwrite!(logger, $($arg)*);
+        let ans = core::write!(logger, $($arg)*);
         drop(logger);
         ans
     });
@@ -58,8 +59,9 @@ macro_rules! print {
 macro_rules! println {
     () => ($crate::print!("\r\n"));
     ($fmt: literal $(, $($arg: tt)+)?) => ({
+        use core::fmt::Write;
         let mut logger = $crate::logging::LOGGER.wait().inner.lock();
-        let ans = ufmt::uwrite!(logger, $fmt $(, $($arg)+)?);
+        let ans = core::write!(logger, $fmt $(, $($arg)+)?);
         drop(logger);
         let _ = $crate::print!("\r\n");
         ans

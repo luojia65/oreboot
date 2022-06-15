@@ -41,6 +41,7 @@ impl<SPI: Instance, PINS> SpiNand<SPI, PINS> {
     pub fn new(inner: Spi<SPI, PINS>) -> Self {
         Self(inner)
     }
+    #[allow(unused)] // FIXME: remove when SpiNand is moved to a seperate crate
     #[inline]
     pub fn free(self) -> Spi<SPI, PINS> {
         self.0
